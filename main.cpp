@@ -1,37 +1,43 @@
-﻿#include <iostream>
-#include "GenerowanieKluczaGlownego.h"
-#include "OczytIPodzialNaBajty.h"
-#include <fstream>
-#include "XorBinarnieKP.h"
-#include "SubBytes.h"
+﻿#include "FileHandler.h"
+#include "KeyGenerator.h"
+#include "AES.h"
+#include <iostream>
+#include <sstream>
+#include <iomanip>
 
-using namespace std;
+int main() {
+    try {
+        // Wczytaj plik
+        std::vector<unsigned char> fileData = FileHandler::readFile("example.txt");
+        std::cout << "File Data (Hex): ";
+        FileHandler::printHex(fileData);
 
-extern vector<string> hexadecymalne;
+        // Wygeneruj klucz
+        std::vector<unsigned char> key = KeyGenerator::generateKey(16);
+        std::cout << "Generated Key (Hex): ";
+        KeyGenerator::printKey(key);
 
-int main()
-{
-    ofstream MyFile("kluczGlowny.txt"); //utworznie pliku
+        // Przetwórz dane przy użyciu AES
+        std::vector<unsigned char> encryptedData = AES::applyAES(fileData, key);
+        std::cout << "Encrypted Data (Hex): ";
+        FileHandler::printHex(encryptedData);
 
-    int rozmiarKlucza = 16;
+        // Konwersja zaszyfrowanych danych do formatu szesnastkowego
+        std::ostringstream hexStream;
+        for (const auto& byte : encryptedData) {
+            hexStream << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
+        }
+        std::string hexString = hexStream.str();
 
-    string KluczSzesnastkowo = KluczGlownyGenerator(rozmiarKlucza);
+        // Zapisz dane szesnastkowe jako plik binarny
+        FileHandler::hexStringToBinaryFile(hexString, "encrypted_hex.dat");
 
-    cout << "Wygenerowany klucz w formacie szesnastkowym: " << KluczSzesnastkowo << endl;
+        std::cout << "Encrypted data in hex format saved to encrypted_hex.dat" << std::endl;
 
-    MyFile << KluczSzesnastkowo; // zapisanie wygenerowanego klucza do pliku (ndapisuje co jest w pliku)
-
-    vector<char> macierzBajtow = odczytajPlik("krokiotwarciaplikow.txt");
-
-    XorBinarnieKP xorBinarnieKP(hexadecymalne, KluczSzesnastkowo);
-    xorBinarnieKP.XorKluczaIPliku();
-
-    // Wyświetl wyniki XOR
-    const vector<string>& wynikXOR = xorBinarnieKP.getWynikXOR();
-    for (const auto& wynik : wynikXOR) {
-        cout << wynik << " ";
     }
-    cout << endl;
+    catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+    }
 
     return 0;
 }
