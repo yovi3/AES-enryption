@@ -1,10 +1,11 @@
 #include "AES.h"
+
 #include <stdexcept>
 #include <iostream>
 #include <iomanip>
-#include "MixColumns.h"
 
 const unsigned char AES::sBox[256] = {
+    // Wartości S-box
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -23,31 +24,14 @@ const unsigned char AES::sBox[256] = {
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 };
 
-const unsigned char Rcon[11] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36, 0x6C };
+const unsigned char Rcon[11] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36 };
 
-void printState(const std::vector<unsigned char>& state, const std::string& label) {
+void AES::printState(const std::vector<unsigned char>& state, const std::string& label) {
     std::cout << label << ": ";
-    for (const auto& byte : state) {
-        std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte) << " ";
+    for (size_t i = 0; i < state.size(); ++i) {
+        std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(state[i]) << " ";
+        if ((i + 1) % 4 == 0) std::cout << std::endl;
     }
-    std::cout << std::endl;
-}
-
-uint8_t galoisMultiplication(uint8_t a, uint8_t b) {
-    uint8_t p = 0;
-    uint8_t hi_bit_set;
-    for (int i = 0; i < 8; i++) {
-        if (b & 1) {
-            p ^= a;
-        }
-        hi_bit_set = a & 0x80;
-        a <<= 1;
-        if (hi_bit_set) {
-            a ^= 0x1b;
-        }
-        b >>= 1;
-    }
-    return p;
 }
 
 std::vector<unsigned char> AES::xorData(const std::vector<unsigned char>& data, const std::vector<unsigned char>& key) {
@@ -67,36 +51,53 @@ void AES::subBytes(std::vector<unsigned char>& data) {
 
 void AES::shiftRows(std::vector<unsigned char>& data) {
     std::vector<unsigned char> temp(16);
-
     temp[0] = data[0];
     temp[1] = data[1];
     temp[2] = data[2];
     temp[3] = data[3];
-
     temp[4] = data[5];
     temp[5] = data[6];
     temp[6] = data[7];
     temp[7] = data[4];
-
     temp[8] = data[10];
     temp[9] = data[11];
     temp[10] = data[8];
     temp[11] = data[9];
-
     temp[12] = data[15];
     temp[13] = data[12];
     temp[14] = data[13];
     temp[15] = data[14];
-
     data = temp;
     printState(data, "After ShiftRows");
 }
 
-void AES::mixColumns(std::vector<unsigned char>& data) {
-    std::vector<uint8_t> state(data.begin(), data.end());
-    MixColumns::apply(state);
-    std::copy(state.begin(), state.end(), data.begin());
-    printState(data, "After MixColumns");
+uint8_t AES::galois_multiplication(uint8_t a, uint8_t b) {
+    uint8_t p = 0;
+    uint8_t hi_bit_set;
+    for (int i = 0; i < 8; i++) {
+        if (b & 1) {
+            p ^= a;
+        }
+        hi_bit_set = a & 0x80;
+        a <<= 1;
+        if (hi_bit_set) {
+            a ^= 0x1b;
+        }
+        b >>= 1;
+    }
+    return p;
+}
+
+void AES::mixColumns(std::vector<unsigned char>& state) {
+    std::vector<unsigned char> temp(16);
+    for (int c = 0; c < 4; ++c) {
+        temp[4 * 0 + c] = galois_multiplication(0x02, state[4 * 0 + c]) ^ galois_multiplication(0x03, state[4 * 1 + c]) ^ state[4 * 2 + c] ^ state[4 * 3 + c];
+        temp[4 * 1 + c] = state[4 * 0 + c] ^ galois_multiplication(0x02, state[4 * 1 + c]) ^ galois_multiplication(0x03, state[4 * 2 + c]) ^ state[4 * 3 + c];
+        temp[4 * 2 + c] = state[4 * 0 + c] ^ state[4 * 1 + c] ^ galois_multiplication(0x02, state[4 * 2 + c]) ^ galois_multiplication(0x03, state[4 * 3 + c]);
+        temp[4 * 3 + c] = galois_multiplication(0x03, state[4 * 0 + c]) ^ state[4 * 1 + c] ^ state[4 * 2 + c] ^ galois_multiplication(0x02, state[4 * 3 + c]);
+    }
+    state = temp;
+    printState(state, "After MixColumns");
 }
 
 void AES::addRoundKey(std::vector<unsigned char>& data, const std::vector<unsigned char>& roundKey) {
@@ -154,80 +155,6 @@ std::vector<unsigned char> AES::applyAES(const std::vector<unsigned char>& data,
         if (block.size() < 16) {
             block.resize(16, 0);
         }
-
-        addRoundKey(block, expandedKeys[0]);
-
-        for (int round = 1; round < 10; ++round) {
-            subBytes(block);
-            shiftRows(block);
-            mixColumns(block);
-            addRoundKey(block, expandedKeys[round]);
-        }
-
-        subBytes(block);
-        shiftRows(block);
-        addRoundKey(block, expandedKeys[10]);
-
-        encryptedData.insert(encryptedData.end(), block.begin(), block.end());
-    }
-
-    return encryptedData;
-}
-
-std::vector<unsigned char> AES::pkcs5Padding(const std::vector<unsigned char>& data) {
-    std::vector<unsigned char> paddedData = data;
-    size_t paddingSize = 16 - (data.size() % 16);
-    paddedData.insert(paddedData.end(), paddingSize, static_cast<unsigned char>(paddingSize));
-    return paddedData;
-}
-
-std::vector<unsigned char> AES::applyAESCBC(const std::vector<unsigned char>& data, const std::vector<unsigned char>& key, const std::vector<unsigned char>& iv) {
-    if (key.size() != 16 || iv.size() != 16) {
-        throw std::invalid_argument("Key and IV must be 16 bytes");
-    }
-
-    std::vector<unsigned char> encryptedData;
-    auto expandedKeys = keyExpansion(key);
-    std::vector<unsigned char> previousBlock = iv;
-
-    std::vector<unsigned char> paddedData = pkcs5Padding(data);
-
-    for (size_t i = 0; i < paddedData.size(); i += 16) {
-        std::vector<unsigned char> block(paddedData.begin() + i, paddedData.begin() + i + 16);
-
-        block = xorData(block, previousBlock);
-
-        addRoundKey(block, expandedKeys[0]);
-
-        for (int round = 1; round < 10; ++round) {
-            subBytes(block);
-            shiftRows(block);
-            mixColumns(block);
-            addRoundKey(block, expandedKeys[round]);
-        }
-
-        subBytes(block);
-        shiftRows(block);
-        addRoundKey(block, expandedKeys[10]);
-
-        encryptedData.insert(encryptedData.end(), block.begin(), block.end());
-        previousBlock = block;
-    }
-
-    return encryptedData;
-}
-
-std::vector<unsigned char> AES::applyAESECB(const std::vector<unsigned char>& data, const std::vector<unsigned char>& key) {
-    if (key.size() != 16) {
-        throw std::invalid_argument("Key must be 16 bytes");
-    }
-
-    std::vector<unsigned char> encryptedData;
-    auto expandedKeys = keyExpansion(key);
-    std::vector<unsigned char> paddedData = pkcs5Padding(data);
-
-    for (size_t i = 0; i < paddedData.size(); i += 16) {
-        std::vector<unsigned char> block(paddedData.begin() + i, paddedData.begin() + i + 16);
 
         addRoundKey(block, expandedKeys[0]);
 
